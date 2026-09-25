@@ -24,8 +24,8 @@ Run the tests with `mvn test`.
 To build the Windows downloads locally (the MSI also needs [WiX Toolset 3](https://wixtoolset.org)):
 
 ```
-./packaging/package-windows.ps1 -Version 1.0.0        # portable zip
-./packaging/package-windows.ps1 -Version 1.0.0 -Msi   # zip + MSI
+./packaging/package-windows.ps1        # portable zip (version read from pom.xml)
+./packaging/package-windows.ps1 -Msi   # zip + MSI
 ```
 
 ## Releasing

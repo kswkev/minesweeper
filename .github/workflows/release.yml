@@ -30,8 +30,8 @@ jobs:
         run: |
           VERSION=$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)
           echo "Releasing version $VERSION"
-          if [[ "$VERSION" == *-SNAPSHOT ]]; then
-            echo "::error::Version $VERSION is a SNAPSHOT. Set a release version in pom.xml."
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$VERSION' is not a release version. Set <version> in pom.xml to MAJOR.MINOR.PATCH (no -SNAPSHOT)."
             exit 1
           fi
           if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null; then

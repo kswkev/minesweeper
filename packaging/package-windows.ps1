@@ -7,18 +7,28 @@
     Run `mvn package` first. The portable zip needs only the JDK (17+). The MSI also needs
     WiX Toolset 3 (https://wixtoolset.org), which CI installs automatically.
 
+    The version defaults to the one in pom.xml.
+
 .EXAMPLE
-    ./packaging/package-windows.ps1 -Version 1.0.0
+    ./packaging/package-windows.ps1
+    ./packaging/package-windows.ps1 -Msi
     ./packaging/package-windows.ps1 -Version 1.0.0 -Msi
 #>
 param(
-    [Parameter(Mandatory = $true)]
     [string]$Version,
 
     [switch]$Msi
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $Version) {
+    $pom = [xml](Get-Content -Raw (Join-Path $PSScriptRoot '..\pom.xml'))
+    $Version = $pom.project.version
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Version '$Version' must be MAJOR.MINOR.PATCH (jpackage and MSI require a plain numeric version)."
+}
 
 # Constant across versions so a newer MSI upgrades an older install in place. Never change it.
 $UpgradeUuid = '00e6a213-c30a-4926-80a5-94509ba09ccd'

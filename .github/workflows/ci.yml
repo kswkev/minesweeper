@@ -42,9 +42,7 @@ jobs:
           }
       - name: Package MSI and portable zip
         shell: pwsh
-        run: |
-          $version = mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout
-          ./packaging/package-windows.ps1 -Version $version -Msi
+        run: ./packaging/package-windows.ps1 -Msi
 
   # Every merge to main publishes the pom.xml version, so a PR into main must carry a new one.
   version-check:
@@ -61,8 +59,8 @@ jobs:
         run: |
           VERSION=$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)
           echo "pom.xml version: $VERSION"
-          if [[ "$VERSION" == *-SNAPSHOT ]]; then
-            echo "::error::Version $VERSION is a SNAPSHOT. Set a release version in pom.xml before merging to main."
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$VERSION' is not a release version. Set <version> in pom.xml to MAJOR.MINOR.PATCH (no -SNAPSHOT) before merging to main."
             exit 1
           fi
           if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null; then
