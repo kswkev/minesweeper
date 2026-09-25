@@ -123,9 +123,166 @@ class BoardTest {
     }
 
     @Test
-    void randomBoardHasExactMineCount() {
+    void randomBoardHasExactMineCountAfterFirstReveal() {
         Board board = new Board(16, 30, 99, new Random(42));
 
+        assertEquals(0, countMines(board));
+        board.reveal(8, 15);
+        assertEquals(99, countMines(board));
+    }
+
+    @Test
+    void rejectsInvalidMineCount() {
+        assertThrows(IllegalArgumentException.class, () -> new Board(3, 3, 9));
+        assertThrows(IllegalArgumentException.class, () -> new Board(3, 3, -1));
+    }
+
+    // --- Safe first click ---
+
+    @Test
+    void firstRevealNeverLosesAndClearsSurroundingBlock() {
+        for (long seed = 0; seed < 200; seed++) {
+            Board board = new Board(16, 30, 99, new Random(seed));
+            int row = (int) (seed % 16);
+            int col = (int) (seed % 30);
+
+            board.reveal(row, col);
+
+            assertEquals(GameState.PLAYING, board.getState(), "seed " + seed);
+            for (int r = row - 1; r <= row + 1; r++) {
+                for (int c = col - 1; c <= col + 1; c++) {
+                    if (r >= 0 && r < 16 && c >= 0 && c < 30) {
+                        assertFalse(board.getCell(r, c).isMine(), "seed " + seed + " cell " + r + "," + c);
+                    }
+                }
+            }
+            assertEquals(99, countMines(board), "seed " + seed);
+        }
+    }
+
+    @Test
+    void denseBoardOnlyProtectsClickedCell() {
+        for (long seed = 0; seed < 50; seed++) {
+            Board board = new Board(5, 5, 20, new Random(seed));
+
+            board.reveal(2, 2);
+
+            assertFalse(board.getCell(2, 2).isMine(), "seed " + seed);
+            assertTrue(board.getCell(2, 2).isRevealed(), "seed " + seed);
+            assertEquals(20, countMines(board), "seed " + seed);
+        }
+    }
+
+    @Test
+    void isStartedOnlyAfterFirstReveal() {
+        Board board = new Board(9, 9, 10, new Random(1));
+        assertFalse(board.isStarted());
+
+        board.toggleFlag(0, 0);
+        assertFalse(board.isStarted());
+
+        board.toggleFlag(0, 0);
+        board.reveal(4, 4);
+        assertTrue(board.isStarted());
+    }
+
+    // --- Mines-left counter ---
+
+    @Test
+    void remainingMinesTracksFlags() {
+        Board board = Board.withMines(3, 3, new int[][] {{0, 0}});
+        assertEquals(1, board.getRemainingMines());
+
+        board.toggleFlag(0, 0);
+        assertEquals(0, board.getRemainingMines());
+
+        board.toggleFlag(2, 2);
+        assertEquals(-1, board.getRemainingMines());
+
+        board.toggleFlag(2, 2);
+        board.toggleFlag(0, 0);
+        assertEquals(1, board.getRemainingMines());
+    }
+
+    // --- Chording ---
+
+    @Test
+    void chordRevealsNeighboursWhenFlagsMatch() {
+        // M . .
+        // . . .
+        // . . M
+        Board board = Board.withMines(3, 3, new int[][] {{0, 0}, {2, 2}});
+        board.reveal(0, 1);
+        board.toggleFlag(0, 0);
+
+        board.chord(0, 1);
+
+        assertTrue(board.getCell(0, 2).isRevealed());
+        assertTrue(board.getCell(1, 0).isRevealed());
+        assertTrue(board.getCell(1, 1).isRevealed());
+        assertTrue(board.getCell(1, 2).isRevealed());
+        assertFalse(board.getCell(0, 0).isRevealed());
+        assertEquals(GameState.PLAYING, board.getState());
+    }
+
+    @Test
+    void chordDoesNothingWhenFlagsDoNotMatch() {
+        Board board = Board.withMines(3, 3, new int[][] {{0, 0}, {2, 2}});
+        board.reveal(1, 1);
+
+        board.chord(1, 1); // needs 2 flags, has 0
+        assertFalse(board.getCell(0, 1).isRevealed());
+
+        board.toggleFlag(0, 0);
+        board.chord(1, 1); // needs 2 flags, has 1
+        assertFalse(board.getCell(0, 1).isRevealed());
+        assertEquals(GameState.PLAYING, board.getState());
+    }
+
+    @Test
+    void chordDoesNothingOnHiddenOrZeroCell() {
+        // M . M
+        // . . .
+        // . . .
+        Board board = Board.withMines(3, 3, new int[][] {{0, 0}, {0, 2}});
+
+        board.chord(1, 1); // hidden
+        assertFalse(board.getCell(1, 1).isRevealed());
+
+        board.toggleFlag(1, 1);
+        board.reveal(2, 1); // zero: floods around the flagged cell
+        board.toggleFlag(1, 1);
+        board.chord(2, 1);
+        assertFalse(board.getCell(1, 1).isRevealed());
+        assertEquals(GameState.PLAYING, board.getState());
+    }
+
+    @Test
+    void chordWithWrongFlagLoses() {
+        Board board = Board.withMines(3, 3, new int[][] {{0, 0}});
+        board.reveal(0, 1);
+        board.toggleFlag(0, 2); // wrong: the mine is at 0,0
+
+        board.chord(0, 1);
+
+        assertEquals(GameState.LOST, board.getState());
+        assertTrue(board.isExploded(0, 0));
+    }
+
+    @Test
+    void chordCanWinTheGame() {
+        // M .
+        // . .
+        Board board = Board.withMines(2, 2, new int[][] {{0, 0}});
+        board.reveal(1, 1);
+        board.toggleFlag(0, 0);
+
+        board.chord(1, 1);
+
+        assertEquals(GameState.WON, board.getState());
+    }
+
+    private static int countMines(Board board) {
         int count = 0;
         for (int r = 0; r < board.getRows(); r++) {
             for (int c = 0; c < board.getCols(); c++) {
@@ -134,12 +291,6 @@ class BoardTest {
                 }
             }
         }
-        assertEquals(99, count);
-    }
-
-    @Test
-    void rejectsInvalidMineCount() {
-        assertThrows(IllegalArgumentException.class, () -> new Board(3, 3, 9));
-        assertThrows(IllegalArgumentException.class, () -> new Board(3, 3, -1));
+        return count;
     }
 }

@@ -7,13 +7,20 @@ import java.util.Random;
 /** Minesweeper game logic. Contains no UI code. */
 public final class Board {
 
+    /** Cells kept mine-free around the first click need this many safe cells to fit. */
+    private static final int SAFE_BLOCK_SIZE = 9;
+
     private final int rows;
     private final int cols;
     private final int mines;
     private final Cell[][] cells;
+    private final Random rng;
 
     private GameState state = GameState.PLAYING;
+    private boolean minesPlaced;
+    private boolean started;
     private int revealedCount;
+    private int flagCount;
     private int explodedRow = -1;
     private int explodedCol = -1;
 
@@ -21,8 +28,13 @@ public final class Board {
         this(rows, cols, mines, new Random());
     }
 
+    /** Mines are placed on the first reveal so that the first click is always safe. */
     public Board(int rows, int cols, int mines, Random rng) {
         this(rows, cols, mines, rng, null);
+    }
+
+    public Board(BoardConfig config) {
+        this(config.rows(), config.cols(), config.mines());
     }
 
     /** Creates a board with mines at the given {row, col} positions. Intended for tests. */
@@ -40,6 +52,7 @@ public final class Board {
         this.rows = rows;
         this.cols = cols;
         this.mines = mines;
+        this.rng = rng;
         this.cells = new Cell[rows][cols];
         for (int r = 0; r < rows; r++) {
             for (int c = 0; c < cols; c++) {
@@ -50,21 +63,30 @@ public final class Board {
             for (int[] pos : minePositions) {
                 cells[pos[0]][pos[1]].setMine(true);
             }
-        } else {
-            placeRandomMines(rng);
+            computeAdjacentCounts();
+            minesPlaced = true;
         }
-        computeAdjacentCounts();
     }
 
-    private void placeRandomMines(Random rng) {
+    /**
+     * Places mines at random, avoiding the first-clicked cell and, when there is room, its neighbours.
+     */
+    private void placeMines(int safeRow, int safeCol) {
+        boolean protectNeighbours = rows * cols - mines >= SAFE_BLOCK_SIZE;
         int placed = 0;
         while (placed < mines) {
-            Cell cell = cells[rng.nextInt(rows)][rng.nextInt(cols)];
-            if (!cell.isMine()) {
-                cell.setMine(true);
+            int r = rng.nextInt(rows);
+            int c = rng.nextInt(cols);
+            boolean excluded = protectNeighbours
+                    ? Math.abs(r - safeRow) <= 1 && Math.abs(c - safeCol) <= 1
+                    : r == safeRow && c == safeCol;
+            if (!excluded && !cells[r][c].isMine()) {
+                cells[r][c].setMine(true);
                 placed++;
             }
         }
+        computeAdjacentCounts();
+        minesPlaced = true;
     }
 
     private void computeAdjacentCounts() {
@@ -91,6 +113,10 @@ public final class Board {
         if (start.isRevealed() || start.isFlagged()) {
             return;
         }
+        if (!minesPlaced) {
+            placeMines(row, col);
+        }
+        started = true;
         if (start.isMine()) {
             start.setRevealed(true);
             explodedRow = row;
@@ -130,6 +156,38 @@ public final class Board {
         }
     }
 
+    /**
+     * Reveals all unflagged neighbours of a revealed number once the matching number of flags
+     * surrounds it. A wrongly placed flag makes this lose the game.
+     */
+    public void chord(int row, int col) {
+        if (state != GameState.PLAYING) {
+            return;
+        }
+        Cell cell = cells[row][col];
+        if (!cell.isRevealed() || cell.getAdjacentMines() == 0) {
+            return;
+        }
+        int flagged = 0;
+        for (int dr = -1; dr <= 1; dr++) {
+            for (int dc = -1; dc <= 1; dc++) {
+                if (inBounds(row + dr, col + dc) && cells[row + dr][col + dc].isFlagged()) {
+                    flagged++;
+                }
+            }
+        }
+        if (flagged != cell.getAdjacentMines()) {
+            return;
+        }
+        for (int dr = -1; dr <= 1; dr++) {
+            for (int dc = -1; dc <= 1; dc++) {
+                if (inBounds(row + dr, col + dc)) {
+                    reveal(row + dr, col + dc);
+                }
+            }
+        }
+    }
+
     public void toggleFlag(int row, int col) {
         if (state != GameState.PLAYING) {
             return;
@@ -137,6 +195,7 @@ public final class Board {
         Cell cell = cells[row][col];
         if (!cell.isRevealed()) {
             cell.setFlagged(!cell.isFlagged());
+            flagCount += cell.isFlagged() ? 1 : -1;
         }
     }
 
@@ -154,6 +213,16 @@ public final class Board {
 
     public GameState getState() {
         return state;
+    }
+
+    /** True once the first cell has been revealed. */
+    public boolean isStarted() {
+        return started;
+    }
+
+    /** Mines minus flags placed; negative when more flags than mines have been placed. */
+    public int getRemainingMines() {
+        return mines - flagCount;
     }
 
     public int getRows() {

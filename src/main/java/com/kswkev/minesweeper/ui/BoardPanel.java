@@ -3,7 +3,6 @@ package com.kswkev.minesweeper.ui;
 import com.kswkev.minesweeper.model.Board;
 import com.kswkev.minesweeper.model.GameState;
 
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import java.awt.GridLayout;
@@ -13,22 +12,41 @@ import java.awt.event.MouseEvent;
 /** Grid of {@link CellButton}s bound to a {@link Board}. */
 final class BoardPanel extends JPanel {
 
+    /** Notified of mouse activity so the header can update its face, counter and timer. */
+    interface Listener {
+        /** A reveal or chord is being held down on a cell. */
+        void cellPressed();
+
+        /** The mouse was released; the board may have changed. */
+        void boardChanged();
+    }
+
     private final Board board;
+    private final Listener listener;
     private final CellButton[][] buttons;
 
-    BoardPanel(Board board) {
+    BoardPanel(Board board, Listener listener) {
         super(new GridLayout(board.getRows(), board.getCols()));
         this.board = board;
+        this.listener = listener;
         this.buttons = new CellButton[board.getRows()][board.getCols()];
 
         MouseAdapter mouseHandler = new MouseAdapter() {
             @Override
+            public void mousePressed(MouseEvent e) {
+                if (board.getState() == GameState.PLAYING && !SwingUtilities.isRightMouseButton(e)) {
+                    listener.cellPressed();
+                }
+            }
+
+            @Override
             public void mouseReleased(MouseEvent e) {
                 CellButton button = (CellButton) e.getSource();
-                if (!button.contains(e.getPoint())) {
-                    return; // Released outside the cell: treat as cancelled.
+                // Released outside the cell: treat as cancelled.
+                if (button.contains(e.getPoint())) {
+                    handleClick(button, e);
                 }
-                handleClick(button, e);
+                listener.boardChanged();
             }
         };
 
@@ -47,20 +65,19 @@ final class BoardPanel extends JPanel {
         if (board.getState() != GameState.PLAYING) {
             return;
         }
-        if (SwingUtilities.isLeftMouseButton(e)) {
-            board.reveal(button.row, button.col);
+        int row = button.row;
+        int col = button.col;
+        if (SwingUtilities.isMiddleMouseButton(e)
+                || (SwingUtilities.isLeftMouseButton(e) && board.getCell(row, col).isRevealed())) {
+            board.chord(row, col);
+        } else if (SwingUtilities.isLeftMouseButton(e)) {
+            board.reveal(row, col);
         } else if (SwingUtilities.isRightMouseButton(e)) {
-            board.toggleFlag(button.row, button.col);
+            board.toggleFlag(row, col);
         } else {
             return;
         }
         refresh();
-
-        if (board.getState() == GameState.WON) {
-            JOptionPane.showMessageDialog(this, "You win!", "Minesweeper", JOptionPane.INFORMATION_MESSAGE);
-        } else if (board.getState() == GameState.LOST) {
-            JOptionPane.showMessageDialog(this, "Boom! You hit a mine.", "Minesweeper", JOptionPane.ERROR_MESSAGE);
-        }
     }
 
     private void refresh() {
