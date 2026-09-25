@@ -1,6 +1,7 @@
 package com.kswkev.minesweeper.ui;
 
 import com.kswkev.minesweeper.model.Board;
+import com.kswkev.minesweeper.model.GameSession;
 import com.kswkev.minesweeper.model.GameState;
 
 import javax.swing.BorderFactory;
@@ -17,19 +18,20 @@ import java.awt.Insets;
 /** Mines-left counter, smiley reset button and elapsed-time display. */
 final class HeaderPanel extends JPanel {
 
-    private static final int MAX_DISPLAY = 999;
+    private static final int MAX_DISPLAY = GameSession.MAX_SECONDS;
     private static final int MIN_DISPLAY = -99;
+    /** How often the time display is redrawn; the session owns the actual elapsed time. */
+    private static final int REDRAW_MS = 250;
 
+    private final GameSession session;
     private final JLabel minesLabel = createDisplay();
     private final JLabel timeLabel = createDisplay();
     private final JButton smileyButton = new JButton();
-    private final Timer timer;
+    private final Timer redrawTimer;
 
-    private Board board;
-    private int seconds;
-
-    HeaderPanel(Runnable onReset) {
+    HeaderPanel(GameSession session) {
         super(new BorderLayout());
+        this.session = session;
         setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createEmptyBorder(4, 4, 4, 4),
                 BorderFactory.createCompoundBorder(
@@ -39,7 +41,7 @@ final class HeaderPanel extends JPanel {
         smileyButton.setFocusable(false);
         smileyButton.setMargin(new Insets(2, 2, 2, 2));
         smileyButton.setToolTipText("New game (F2)");
-        smileyButton.addActionListener(e -> onReset.run());
+        smileyButton.addActionListener(e -> session.newGame());
 
         JPanel centre = new JPanel();
         centre.setOpaque(false);
@@ -49,12 +51,7 @@ final class HeaderPanel extends JPanel {
         add(centre, BorderLayout.CENTER);
         add(timeLabel, BorderLayout.EAST);
 
-        timer = new Timer(1000, e -> {
-            if (seconds < MAX_DISPLAY) {
-                seconds++;
-                timeLabel.setText(format(seconds));
-            }
-        });
+        redrawTimer = new Timer(REDRAW_MS, e -> timeLabel.setText(format(session.getElapsedSeconds())));
     }
 
     private static JLabel createDisplay() {
@@ -68,12 +65,8 @@ final class HeaderPanel extends JPanel {
     }
 
     /** Binds the header to a fresh board and resets the counter, face and timer. */
-    void reset(Board newBoard) {
-        board = newBoard;
+    void reset(Board board) {
         board.addChangeListener(this::update);
-        timer.stop();
-        seconds = 0;
-        timeLabel.setText(format(0));
         update();
     }
 
@@ -81,26 +74,17 @@ final class HeaderPanel extends JPanel {
         smileyButton.setIcon(new SmileyIcon(SmileyIcon.Face.WORRIED));
     }
 
-    /** Seconds shown on the timer; frozen once the game ends. */
-    int getElapsedSeconds() {
-        return seconds;
-    }
-
-    /** Refreshes the counter, face and timer from the board's state. */
+    /** Refreshes the counter, face and timer from the session's current board. */
     void update() {
+        Board board = session.getBoard();
         minesLabel.setText(format(board.getRemainingMines()));
+        timeLabel.setText(format(session.getElapsedSeconds()));
 
         GameState state = board.getState();
-        if (board.isStarted() && seconds == 0) {
-            // Classic Minesweeper counts the first second as soon as play starts.
-            seconds = 1;
-            timeLabel.setText(format(seconds));
-            if (state == GameState.PLAYING) {
-                timer.start();
-            }
-        }
-        if (state != GameState.PLAYING) {
-            timer.stop();
+        if (state == GameState.PLAYING && board.isStarted()) {
+            redrawTimer.start();
+        } else {
+            redrawTimer.stop();
         }
 
         SmileyIcon.Face face = switch (state) {

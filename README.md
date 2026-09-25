@@ -2,19 +2,39 @@
 
 A classic Minesweeper desktop game written in Java (Swing).
 
-## Requirements
+## Download
 
-- JDK 17+
-- Maven 3.9+
+Get the latest version from the [Releases page](https://github.com/kswkev/minesweeper/releases/latest):
 
-## Build & run
+- **`Minesweeper-<version>.msi`**: Windows installer with Start menu and desktop shortcuts. No Java needed.
+- **`Minesweeper-<version>-windows.zip`**: portable Windows version. Unzip and run `Minesweeper.exe`. No Java needed.
+- **`minesweeper-<version>.jar`**: any OS with Java 17+ installed: `java -jar minesweeper-<version>.jar`.
+
+## Build from source
+
+Requires JDK 17+ and Maven 3.9+.
 
 ```
 mvn package
-java -jar target/minesweeper-1.0-SNAPSHOT.jar
+java -jar target/minesweeper-1.0.0.jar
 ```
 
 Run the tests with `mvn test`.
+
+To build the Windows downloads locally (the MSI also needs [WiX Toolset 3](https://wixtoolset.org)):
+
+```
+./packaging/package-windows.ps1        # portable zip (version read from pom.xml)
+./packaging/package-windows.ps1 -Msi   # zip + MSI
+```
+
+## Releasing
+
+Every merge to `main` publishes a release automatically, using the version in `pom.xml`:
+
+1. Bump `<version>` in `pom.xml` (e.g. `1.0.0` → `1.1.0`) on `develop`.
+2. Open a PR from `develop` to `main`. CI fails the PR if that version has already been released.
+3. Merge it. The Release workflow tests the build, creates the `v<version>` tag and a GitHub Release with the jar, MSI and zip attached.
 
 ## How to play
 

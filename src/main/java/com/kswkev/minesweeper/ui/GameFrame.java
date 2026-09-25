@@ -1,12 +1,9 @@
 package com.kswkev.minesweeper.ui;
 
-import com.kswkev.minesweeper.model.BestTimes;
 import com.kswkev.minesweeper.model.Board;
 import com.kswkev.minesweeper.model.BoardConfig;
 import com.kswkev.minesweeper.model.Difficulty;
-import com.kswkev.minesweeper.model.GameState;
-import com.kswkev.minesweeper.model.MineProgression;
-import com.kswkev.minesweeper.model.Settings;
+import com.kswkev.minesweeper.model.GameSession;
 
 import javax.swing.ButtonGroup;
 import javax.swing.JCheckBoxMenuItem;
@@ -24,37 +21,33 @@ import java.awt.event.WindowEvent;
 import java.util.EnumMap;
 import java.util.Map;
 
-public final class GameFrame extends JFrame {
+/** The game window. Game rules live in {@link GameSession}; this class only shows them. */
+public final class GameFrame extends JFrame implements GameSession.Listener {
 
-    private final Settings settings;
-    private final BestTimes bestTimes;
-    private final HeaderPanel headerPanel = new HeaderPanel(this::newGame);
+    private final GameSession session;
+    private final HeaderPanel headerPanel;
     private final Map<Difficulty, JRadioButtonMenuItem> difficultyItems = new EnumMap<>(Difficulty.class);
 
-    private Difficulty difficulty;
-    private final MineProgression progression;
-    private Board board;
     private BoardPanel boardPanel;
-    private boolean resultHandled;
 
-    public GameFrame(Settings settings, BestTimes bestTimes) {
-        this.settings = settings;
-        this.bestTimes = bestTimes;
-        this.difficulty = settings.getDifficulty();
-        this.progression = new MineProgression(settings.getBoardConfig());
+    public GameFrame(GameSession session) {
+        this.session = session;
+        this.headerPanel = new HeaderPanel(session);
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setResizable(false);
         setJMenuBar(createMenuBar());
         add(headerPanel, BorderLayout.NORTH);
-        startGame();
+
+        session.setListener(this);
+        gameStarted(session.getBoard());
         setLocationRelativeTo(null);
     }
 
     private JMenuBar createMenuBar() {
         JMenuItem newGame = new JMenuItem("New Game");
         newGame.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F2, 0));
-        newGame.addActionListener(e -> newGame());
+        newGame.addActionListener(e -> session.newGame());
 
         ButtonGroup group = new ButtonGroup();
         for (Difficulty level : Difficulty.values()) {
@@ -64,16 +57,14 @@ public final class GameFrame extends JFrame {
             group.add(item);
             difficultyItems.put(level, item);
         }
-        difficultyItems.get(difficulty).setSelected(true);
+        difficultyItems.get(session.getDifficulty()).setSelected(true);
 
-        JCheckBoxMenuItem marks = new JCheckBoxMenuItem("Marks (?)", settings.isQuestionMarksEnabled());
-        marks.addActionListener(e -> {
-            settings.setQuestionMarksEnabled(marks.isSelected());
-            board.setQuestionMarksEnabled(marks.isSelected());
-        });
+        JCheckBoxMenuItem marks = new JCheckBoxMenuItem("Marks (?)",
+                session.getSettings().isQuestionMarksEnabled());
+        marks.addActionListener(e -> session.setQuestionMarksEnabled(marks.isSelected()));
 
         JMenuItem bestTimesItem = new JMenuItem("Best Times...");
-        bestTimesItem.addActionListener(e -> BestTimesDialog.show(this, bestTimes));
+        bestTimesItem.addActionListener(e -> BestTimesDialog.show(this, session.getBestTimes()));
 
         JMenuItem exit = new JMenuItem("Exit");
         exit.addActionListener(e -> dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING)));
@@ -100,41 +91,25 @@ public final class GameFrame extends JFrame {
     private void selectDifficulty(Difficulty level) {
         BoardConfig config;
         if (level == Difficulty.CUSTOM) {
-            var chosen = CustomBoardDialog.show(this, settings.getCustomConfig());
+            var chosen = CustomBoardDialog.show(this, session.getSettings().getCustomConfig());
             if (chosen.isEmpty()) {
                 // Cancelled: keep the current game and its menu selection.
-                difficultyItems.get(difficulty).setSelected(true);
+                difficultyItems.get(session.getDifficulty()).setSelected(true);
                 return;
             }
             config = chosen.get();
-            settings.setCustomConfig(config);
         } else {
             config = level.getPreset().orElseThrow();
         }
-        difficulty = level;
-        settings.setDifficulty(level);
-        progression.reset(config);
-        startGame();
+        session.selectDifficulty(level, config);
         setLocationRelativeTo(null);
     }
 
-    /** New Game / smiley: leaving a game in progress counts as abandoning it. */
-    private void newGame() {
-        if (board != null && board.isStarted() && board.getState() == GameState.PLAYING) {
-            progression.onAbandon();
-        }
-        startGame();
-    }
-
-    private void startGame() {
+    @Override
+    public void gameStarted(Board board) {
         if (boardPanel != null) {
             remove(boardPanel);
         }
-        board = new Board(progression.current());
-        board.setQuestionMarksEnabled(settings.isQuestionMarksEnabled());
-        resultHandled = false;
-
-        // Listener order matters: redraw the grid and stop the timer before handling the result.
         boardPanel = new BoardPanel(board, new BoardPanel.PressListener() {
             @Override
             public void cellPressed() {
@@ -147,51 +122,26 @@ public final class GameFrame extends JFrame {
             }
         });
         headerPanel.reset(board);
-        board.addChangeListener(this::onBoardChanged);
-
         add(boardPanel, BorderLayout.CENTER);
-        updateTitle();
+        setTitle(session.getTitle());
         pack();
     }
 
-    private void onBoardChanged() {
-        GameState state = board.getState();
-        if (state == GameState.PLAYING || resultHandled) {
-            return;
-        }
-        resultHandled = true;
-        if (state == GameState.LOST) {
-            progression.onLoss();
-            return;
-        }
-
-        // Only standard games (preset difficulty, no extra mines) can set a best time.
-        boolean recordEligible = progression.getExtraMines() == 0;
-        progression.onWin();
-        int seconds = headerPanel.getElapsedSeconds();
-        if (recordEligible && bestTimes.isRecord(difficulty, seconds)) {
-            Difficulty level = difficulty;
-            // Let the finished board paint before the prompt appears.
-            SwingUtilities.invokeLater(() -> promptForRecord(level, seconds));
-        }
+    @Override
+    public void recordAchieved(Difficulty level, int seconds) {
+        // Let the finished board paint before the prompt appears.
+        SwingUtilities.invokeLater(() -> promptForRecord(level, seconds));
     }
 
     private void promptForRecord(Difficulty level, int seconds) {
         String message = "You have the fastest time for " + level.getDisplayName().toLowerCase()
                 + " level (" + seconds + " seconds).\nPlease enter your name:";
         Object input = JOptionPane.showInputDialog(this, message, "New Best Time",
-                JOptionPane.INFORMATION_MESSAGE, null, null, settings.getLastName());
+                JOptionPane.INFORMATION_MESSAGE, null, null, session.getSettings().getLastName());
         if (input == null) {
             return;
         }
-        String name = input.toString().isBlank() ? "Anonymous" : input.toString().trim();
-        settings.setLastName(name);
-        bestTimes.record(level, seconds, name);
-        BestTimesDialog.show(this, bestTimes);
-    }
-
-    private void updateTitle() {
-        int extra = progression.getExtraMines();
-        setTitle("Minesweeper: " + difficulty.getDisplayName() + (extra > 0 ? " +" + extra : ""));
+        session.saveBestTime(level, seconds, input.toString());
+        BestTimesDialog.show(this, session.getBestTimes());
     }
 }
