@@ -5,14 +5,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BoardConfigTest {
 
     @Test
     void presetsMatchClassicSizes() {
-        assertEquals(new BoardConfig(9, 9, 10), BoardConfig.BEGINNER);
-        assertEquals(new BoardConfig(16, 16, 40), BoardConfig.INTERMEDIATE);
-        assertEquals(new BoardConfig(16, 30, 99), BoardConfig.EXPERT);
+        assertEquals(new BoardConfig(9, 9, 10), Difficulty.BEGINNER.getPreset().orElseThrow());
+        assertEquals(new BoardConfig(16, 16, 40), Difficulty.INTERMEDIATE.getPreset().orElseThrow());
+        assertEquals(new BoardConfig(16, 30, 99), Difficulty.EXPERT.getPreset().orElseThrow());
+        assertTrue(Difficulty.CUSTOM.getPreset().isEmpty());
     }
 
     @Test
@@ -30,5 +32,14 @@ class BoardConfigTest {
         assertThrows(IllegalArgumentException.class, () -> new BoardConfig(9, 31, 10));
         assertThrows(IllegalArgumentException.class, () -> new BoardConfig(9, 9, 0));
         assertThrows(IllegalArgumentException.class, () -> new BoardConfig(5, 5, 17));
+    }
+
+    @Test
+    void withMinesKeepsSizeAndValidates() {
+        BoardConfig config = new BoardConfig(9, 9, 10).withMines(11);
+
+        assertEquals(new BoardConfig(9, 9, 11), config);
+        assertEquals(72, config.maxMines());
+        assertThrows(IllegalArgumentException.class, () -> config.withMines(73));
     }
 }

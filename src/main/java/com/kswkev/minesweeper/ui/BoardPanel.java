@@ -9,33 +9,29 @@ import java.awt.GridLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
-/** Grid of {@link CellButton}s bound to a {@link Board}. */
+/** Grid of {@link CellButton}s bound to a {@link Board}. Redraws whenever the board changes. */
 final class BoardPanel extends JPanel {
 
-    /** Notified of mouse activity so the header can update its face, counter and timer. */
-    interface Listener {
-        /** A reveal or chord is being held down on a cell. */
+    /** Notified while a reveal or chord is held down, so the header can show the worried face. */
+    interface PressListener {
         void cellPressed();
 
-        /** The mouse was released; the board may have changed. */
-        void boardChanged();
+        void cellReleased();
     }
 
     private final Board board;
-    private final Listener listener;
     private final CellButton[][] buttons;
 
-    BoardPanel(Board board, Listener listener) {
+    BoardPanel(Board board, PressListener pressListener) {
         super(new GridLayout(board.getRows(), board.getCols()));
         this.board = board;
-        this.listener = listener;
         this.buttons = new CellButton[board.getRows()][board.getCols()];
 
         MouseAdapter mouseHandler = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 if (board.getState() == GameState.PLAYING && !SwingUtilities.isRightMouseButton(e)) {
-                    listener.cellPressed();
+                    pressListener.cellPressed();
                 }
             }
 
@@ -46,7 +42,7 @@ final class BoardPanel extends JPanel {
                 if (button.contains(e.getPoint())) {
                     handleClick(button, e);
                 }
-                listener.boardChanged();
+                pressListener.cellReleased();
             }
         };
 
@@ -58,13 +54,11 @@ final class BoardPanel extends JPanel {
                 add(button);
             }
         }
+        board.addChangeListener(this::refresh);
         refresh();
     }
 
     private void handleClick(CellButton button, MouseEvent e) {
-        if (board.getState() != GameState.PLAYING) {
-            return;
-        }
         int row = button.row;
         int col = button.col;
         if (SwingUtilities.isMiddleMouseButton(e)
@@ -73,11 +67,8 @@ final class BoardPanel extends JPanel {
         } else if (SwingUtilities.isLeftMouseButton(e)) {
             board.reveal(row, col);
         } else if (SwingUtilities.isRightMouseButton(e)) {
-            board.toggleFlag(row, col);
-        } else {
-            return;
+            board.cycleMark(row, col);
         }
-        refresh();
     }
 
     private void refresh() {

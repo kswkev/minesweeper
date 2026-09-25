@@ -70,6 +70,7 @@ final class HeaderPanel extends JPanel {
     /** Binds the header to a fresh board and resets the counter, face and timer. */
     void reset(Board newBoard) {
         board = newBoard;
+        board.addChangeListener(this::update);
         timer.stop();
         seconds = 0;
         timeLabel.setText(format(0));
@@ -80,17 +81,25 @@ final class HeaderPanel extends JPanel {
         smileyButton.setIcon(new SmileyIcon(SmileyIcon.Face.WORRIED));
     }
 
+    /** Seconds shown on the timer; frozen once the game ends. */
+    int getElapsedSeconds() {
+        return seconds;
+    }
+
     /** Refreshes the counter, face and timer from the board's state. */
     void update() {
         minesLabel.setText(format(board.getRemainingMines()));
 
         GameState state = board.getState();
-        if (state == GameState.PLAYING && board.isStarted() && !timer.isRunning()) {
+        if (board.isStarted() && seconds == 0) {
             // Classic Minesweeper counts the first second as soon as play starts.
             seconds = 1;
             timeLabel.setText(format(seconds));
-            timer.start();
-        } else if (state != GameState.PLAYING) {
+            if (state == GameState.PLAYING) {
+                timer.start();
+            }
+        }
+        if (state != GameState.PLAYING) {
             timer.stop();
         }
 

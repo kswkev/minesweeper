@@ -1,7 +1,9 @@
 package com.kswkev.minesweeper.model;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Random;
 
 /** Minesweeper game logic. Contains no UI code. */
@@ -15,10 +17,12 @@ public final class Board {
     private final int mines;
     private final Cell[][] cells;
     private final Random rng;
+    private final List<Runnable> changeListeners = new ArrayList<>();
 
     private GameState state = GameState.PLAYING;
     private boolean minesPlaced;
     private boolean started;
+    private boolean questionMarksEnabled;
     private int revealedCount;
     private int flagCount;
     private int explodedRow = -1;
@@ -68,6 +72,22 @@ public final class Board {
         }
     }
 
+    /** Registers a callback run after any action that changes the board. */
+    public void addChangeListener(Runnable listener) {
+        changeListeners.add(listener);
+    }
+
+    private void fireChanged() {
+        for (Runnable listener : changeListeners) {
+            listener.run();
+        }
+    }
+
+    /** When enabled, {@link #cycleMark} includes the "?" mark. */
+    public void setQuestionMarksEnabled(boolean enabled) {
+        questionMarksEnabled = enabled;
+    }
+
     /**
      * Places mines at random, avoiding the first-clicked cell and, when there is room, its neighbours.
      */
@@ -106,23 +126,31 @@ public final class Board {
     }
 
     public void reveal(int row, int col) {
+        if (revealWithoutNotify(row, col)) {
+            fireChanged();
+        }
+    }
+
+    /** Reveals a cell (flood-filling from zeros) and returns whether anything changed. */
+    private boolean revealWithoutNotify(int row, int col) {
         if (state != GameState.PLAYING) {
-            return;
+            return false;
         }
         Cell start = cells[row][col];
         if (start.isRevealed() || start.isFlagged()) {
-            return;
+            return false;
         }
         if (!minesPlaced) {
             placeMines(row, col);
         }
         started = true;
+        start.setMark(Cell.Mark.NONE);
         if (start.isMine()) {
             start.setRevealed(true);
             explodedRow = row;
             explodedCol = col;
             state = GameState.LOST;
-            return;
+            return true;
         }
 
         Deque<int[]> queue = new ArrayDeque<>();
@@ -143,6 +171,7 @@ public final class Board {
                     }
                     Cell neighbour = cells[r][c];
                     if (!neighbour.isRevealed() && !neighbour.isFlagged() && !neighbour.isMine()) {
+                        neighbour.setMark(Cell.Mark.NONE);
                         neighbour.setRevealed(true);
                         revealedCount++;
                         queue.add(new int[] {r, c});
@@ -153,7 +182,20 @@ public final class Board {
 
         if (revealedCount == rows * cols - mines) {
             state = GameState.WON;
+            flagAllMines();
         }
+        return true;
+    }
+
+    private void flagAllMines() {
+        for (Cell[] row : cells) {
+            for (Cell cell : row) {
+                if (cell.isMine()) {
+                    cell.setMark(Cell.Mark.FLAG);
+                }
+            }
+        }
+        flagCount = mines;
     }
 
     /**
@@ -179,24 +221,41 @@ public final class Board {
         if (flagged != cell.getAdjacentMines()) {
             return;
         }
+        boolean changed = false;
         for (int dr = -1; dr <= 1; dr++) {
             for (int dc = -1; dc <= 1; dc++) {
                 if (inBounds(row + dr, col + dc)) {
-                    reveal(row + dr, col + dc);
+                    changed |= revealWithoutNotify(row + dr, col + dc);
                 }
             }
         }
+        if (changed) {
+            fireChanged();
+        }
     }
 
-    public void toggleFlag(int row, int col) {
+    /** Cycles a hidden cell's mark: none, flag, "?" (if enabled), then back to none. */
+    public void cycleMark(int row, int col) {
         if (state != GameState.PLAYING) {
             return;
         }
         Cell cell = cells[row][col];
-        if (!cell.isRevealed()) {
-            cell.setFlagged(!cell.isFlagged());
-            flagCount += cell.isFlagged() ? 1 : -1;
+        if (cell.isRevealed()) {
+            return;
         }
+        Cell.Mark next = switch (cell.getMark()) {
+            case NONE -> Cell.Mark.FLAG;
+            case FLAG -> questionMarksEnabled ? Cell.Mark.QUESTION : Cell.Mark.NONE;
+            case QUESTION -> Cell.Mark.NONE;
+        };
+        if (cell.isFlagged()) {
+            flagCount--;
+        }
+        cell.setMark(next);
+        if (cell.isFlagged()) {
+            flagCount++;
+        }
+        fireChanged();
     }
 
     public boolean isExploded(int row, int col) {

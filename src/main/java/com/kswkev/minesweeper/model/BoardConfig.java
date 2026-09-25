@@ -1,6 +1,6 @@
 package com.kswkev.minesweeper.model;
 
-/** Board dimensions and mine count for a game. */
+/** Board dimensions and mine count for a game. Presets live on {@link Difficulty}. */
 public record BoardConfig(int rows, int cols, int mines) {
 
     public static final int MIN_ROWS = 5;
@@ -8,10 +8,6 @@ public record BoardConfig(int rows, int cols, int mines) {
     public static final int MIN_COLS = 5;
     public static final int MAX_COLS = 30;
     public static final int MIN_MINES = 1;
-
-    public static final BoardConfig BEGINNER = new BoardConfig(9, 9, 10);
-    public static final BoardConfig INTERMEDIATE = new BoardConfig(16, 16, 40);
-    public static final BoardConfig EXPERT = new BoardConfig(16, 30, 99);
 
     public BoardConfig {
         if (rows < MIN_ROWS || rows > MAX_ROWS) {
@@ -24,6 +20,16 @@ public record BoardConfig(int rows, int cols, int mines) {
             throw new IllegalArgumentException(
                     "Mines must be between " + MIN_MINES + " and " + maxMines(rows, cols));
         }
+    }
+
+    /** Returns a copy of this config with a different mine count. */
+    public BoardConfig withMines(int newMines) {
+        return new BoardConfig(rows, cols, newMines);
+    }
+
+    /** The most mines this board can hold. */
+    public int maxMines() {
+        return maxMines(rows, cols);
     }
 
     /** Leaves room for a mine-free 3x3 block around the first click. */
