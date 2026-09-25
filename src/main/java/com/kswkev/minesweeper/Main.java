@@ -1,11 +1,13 @@
 package com.kswkev.minesweeper;
 
 import com.kswkev.minesweeper.model.BestTimes;
+import com.kswkev.minesweeper.model.GameSession;
 import com.kswkev.minesweeper.model.Settings;
 import com.kswkev.minesweeper.ui.GameFrame;
 
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
+import java.time.Clock;
 import java.util.prefs.Preferences;
 
 public final class Main {
@@ -26,7 +28,7 @@ public final class Main {
             } catch (Exception ignored) {
                 // Fall back to the default look and feel.
             }
-            new GameFrame(settings, bestTimes).setVisible(true);
+            new GameFrame(new GameSession(settings, bestTimes, Clock.systemUTC())).setVisible(true);
         });
     }
 }
