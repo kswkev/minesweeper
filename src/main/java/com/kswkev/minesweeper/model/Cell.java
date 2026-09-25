@@ -3,9 +3,16 @@ package com.kswkev.minesweeper.model;
 /** A single square on the board. Mutated only by {@link Board}. */
 public final class Cell {
 
+    /** A player-placed marker on a hidden cell. */
+    public enum Mark {
+        NONE,
+        FLAG,
+        QUESTION
+    }
+
     private boolean mine;
     private boolean revealed;
-    private boolean flagged;
+    private Mark mark = Mark.NONE;
     private int adjacentMines;
 
     public boolean isMine() {
@@ -16,8 +23,16 @@ public final class Cell {
         return revealed;
     }
 
+    public Mark getMark() {
+        return mark;
+    }
+
     public boolean isFlagged() {
-        return flagged;
+        return mark == Mark.FLAG;
+    }
+
+    public boolean isQuestion() {
+        return mark == Mark.QUESTION;
     }
 
     public int getAdjacentMines() {
@@ -32,8 +47,8 @@ public final class Cell {
         this.revealed = revealed;
     }
 
-    void setFlagged(boolean flagged) {
-        this.flagged = flagged;
+    void setMark(Mark mark) {
+        this.mark = mark;
     }
 
     void setAdjacentMines(int adjacentMines) {

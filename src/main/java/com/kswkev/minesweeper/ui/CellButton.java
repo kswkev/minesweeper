@@ -4,6 +4,7 @@ import com.kswkev.minesweeper.model.Cell;
 import com.kswkev.minesweeper.model.GameState;
 
 import javax.swing.BorderFactory;
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.border.Border;
 import java.awt.Color;
@@ -17,10 +18,11 @@ final class CellButton extends JButton {
     private static final int SIZE = 30;
 
     private static final Color HIDDEN_BG = new Color(0xC0C0C0);
-    private static final Color REVEALED_BG = new Color(0xE0E0E0);
+    private static final Color REVEALED_BG = new Color(0xC0C0C0);
     private static final Color EXPLODED_BG = new Color(0xFF4040);
     private static final Border HIDDEN_BORDER = BorderFactory.createRaisedBevelBorder();
-    private static final Border REVEALED_BORDER = BorderFactory.createLineBorder(new Color(0x9A9A9A));
+    // Classic sunken look: a thin dark line on the top and left edges only.
+    private static final Border REVEALED_BORDER = BorderFactory.createMatteBorder(1, 1, 0, 0, new Color(0x808080));
 
     private static final Color[] NUMBER_COLOURS = {
             null,
@@ -33,9 +35,6 @@ final class CellButton extends JButton {
             new Color(0x000000), // 7
             new Color(0x808080), // 8
     };
-
-    private final String flagText;
-    private final String mineText;
 
     final int row;
     final int col;
@@ -50,18 +49,12 @@ final class CellButton extends JButton {
         setContentAreaFilled(true);
         setOpaque(true);
         setFont(new Font(Font.DIALOG, Font.BOLD, 16));
-
-        flagText = displayable("🚩", "F");
-        mineText = displayable("💣", "*");
-    }
-
-    private String displayable(String preferred, String fallback) {
-        return getFont().canDisplayUpTo(preferred) == -1 ? preferred : fallback;
     }
 
     void render(Cell cell, GameState state, boolean exploded) {
         boolean lost = state == GameState.LOST;
         String text = "";
+        Icon icon = null;
         Color fg = Color.BLACK;
         Color bg = HIDDEN_BG;
         Border border = HIDDEN_BORDER;
@@ -70,21 +63,25 @@ final class CellButton extends JButton {
             bg = exploded ? EXPLODED_BG : REVEALED_BG;
             border = REVEALED_BORDER;
             if (cell.isMine()) {
-                text = mineText;
+                icon = MineIcon.INSTANCE;
             } else if (cell.getAdjacentMines() > 0) {
                 text = Integer.toString(cell.getAdjacentMines());
                 fg = NUMBER_COLOURS[cell.getAdjacentMines()];
             }
         } else if (cell.isFlagged()) {
-            text = flagText;
-            fg = Color.RED;
             if (lost && !cell.isMine()) {
                 // Wrong flag: mark it once the game is lost.
                 text = "X";
+                fg = Color.RED;
+            } else {
+                icon = FlagIcon.INSTANCE;
             }
+        } else if (cell.isQuestion()) {
+            text = "?";
         }
 
         setText(text);
+        setIcon(icon);
         setForeground(fg);
         setBackground(bg);
         setBorder(border);
